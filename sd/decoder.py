@@ -76,3 +76,80 @@ class VAE_ResidualBlock(nn.Module):
         x = self.conv2(x)
 
         return x + self.residual_layer(residual)
+
+class VAE_Decoder(nn.Sequential):
+
+    def __init__(self):
+
+        super().__init__(
+            nn.Conv2d(4, 4, kernel_size=1, padding=0),
+
+            nn.Conv2d(4, 512, kernel_size=3, padding=1),
+
+            VAE_ResidualBlock(512, 512),
+
+            VAE_AttentionBlock(512),
+
+            VAE_ResidualBlock(512, 512),
+
+            VAE_ResidualBlock(512, 512),
+
+            VAE_ResidualBlock(512, 512),
+
+            # batch_size x 512 x Height/8, Width/8 -> batch_size x 512 x Height/8, Width/8
+            VAE_ResidualBlock(512, 512),
+
+            # batch_size x 512 x Height/8, Width/8 -> batch_size x 512 x Height/4, Width/4
+            nn.Upsample(scale_factor=2),
+
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+
+            VAE_ResidualBlock(512, 512),
+
+            VAE_ResidualBlock(512, 512),
+
+            VAE_ResidualBlock(512, 512),
+
+            # batch_size x 512 x Height/4, Width/4 -> batch_size x 512 x Height/2, Width/2
+            nn.Upsample(scale_factor=2),
+
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+
+            VAE_ResidualBlock(512, 256),
+
+            VAE_ResidualBlock(256, 256),
+
+            VAE_ResidualBlock(256, 256),
+
+            # batch_size x 256 x Height/2, Width/2 -> batch_size x 256 x Height, Width
+            nn.Upsample(scale_factor=2),
+
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+
+            VAE_ResidualBlock(256, 128),
+
+            VAE_ResidualBlock(128, 128),
+
+            VAE_ResidualBlock(128, 128),
+
+            # groups of size 32
+            nn.GroupNorm(32, 128),
+
+            nn.SiLU(),
+
+            # batch_size x 128 x Height, Width -> batch_size x 3 x Height, Width
+            nn.Conv2d(128, 3, kernel_size=3, padding=1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        # x: batch_size x 4 x Height / 8, Width / 8
+
+        x /= 0.18215
+
+        for module in self:
+            x = module(x)
+
+        return x
+
+
