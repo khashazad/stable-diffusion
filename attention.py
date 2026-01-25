@@ -50,3 +50,53 @@ class SelfAttention(nn.Module):
 
         # batch_size, sequence_length, dimension
         return self.out_projection(output)
+
+
+class CrossAttention(nn.Module):
+
+    def __init__(self, n_heads: int, d_embed: int, d_cross: int, in_proj_bias: bool = True, out_proj_bias: bool = True):
+
+        super().__init__()
+
+        self.q_proj = nn.Linear(d_embed, d_embed, bias=in_proj_bias)
+        self.k_proj = nn.Linear(d_cross, d_embed, bias=in_proj_bias)
+        self.v_proj = nn.Linear(d_cross, d_embed, bias=in_proj_bias)
+        self.out_proj = nn.Linear(d_embed, d_embed, bias=out_proj_bias)
+
+        self.n_heads = n_heads
+        self.d_head = d_embed // n_heads
+
+    # x = query, y = key, value
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        # x (latent): batch_size, sequence_length, dimension
+        # y (context): batch_size, sequence_length, dimension = (batch_size, 77, 768)
+
+        input_shape = x.shape
+
+        batch_size, seq_len, d_embed = input_shape
+
+        interim_shape = (batch_size, -1, self.n_heads, self.d_head)
+
+        # Multiply queries by Wq
+        q = self.q_proj(x)
+        k = self.k_proj(y)
+        v = self.v_proj(y)
+
+
+        q = q.view(interim_shape).transpose(-2, -3)
+        k = k.view(interim_shape).transpose(-2, -3)
+        v = v.view(interim_shape).transpose(-2, -3)
+
+        # batch_size, H, seq_len, seq_len
+        attention_weights = k @ q.transpose(-2, -1)
+
+        attention_weights /= math.sqrt(self.d_head)
+
+        attention_weights = attention_weights.softmax(dim=-1)
+
+        # batch_size, H, seq_len, d_head
+        output = attention_weights @ v
+
+        output = output.transpose(-2, -3).view(input_shape)
+
+        return self.out_proj(output)
